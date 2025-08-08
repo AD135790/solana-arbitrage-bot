@@ -1,0 +1,13 @@
+/target
+
+# Rust
+target/
+Cargo.lock
+
+# Node
+node_modules/
+dist/
+
+# Secrets
+keypairs/
+.env

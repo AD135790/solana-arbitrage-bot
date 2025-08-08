@@ -1,0 +1,20 @@
+[package]
+name = "bot-runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+client = {path = "../../crates/client" }
+utils = {path = "../../crates/utils"}
+tracing-subscriber = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+reqwest = { workspace = true }
+teloxide = { version = "0.12", features = ["macros", "auto-send"] }
+dotenvy = "0.15"
+solana-program = { workspace = true }
+solana-client  = { workspace = true }
+solana-sdk     = { workspace = true }
+base64 = { workspace = true }
+bincode = { workspace = true }

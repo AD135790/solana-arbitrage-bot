@@ -1,0 +1,18 @@
+[package]
+name = "cli-runner"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { workspace = true }   # ✅ 命令行解析
+tokio = { workspace = true }    # ✅ 异步执行
+anyhow = { workspace = true }                                       # ✅ 错误传播
+serde = { workspace = true }   # ✅ 类型反序列化
+serde_json = { workspace = true }                                   # ✅ JSON 解析
+reqwest =  { workspace = true } # ✅ 请求 Jupiter
+tracing = { workspace = true }                                      # ✅ 日志系统
+
+# ✅ 引用本地 crates 模块（你已经写好的）
+client = { path = "../../crates/client" }
+utils = { path = "../../crates/utils" }
+comfy-table = "7.1.0"
