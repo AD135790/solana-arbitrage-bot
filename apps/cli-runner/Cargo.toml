@@ -11,8 +11,12 @@ serde = { workspace = true }   # ✅ 类型反序列化
 serde_json = { workspace = true }                                   # ✅ JSON 解析
 reqwest =  { workspace = true } # ✅ 请求 Jupiter
 tracing = { workspace = true }                                      # ✅ 日志系统
+once_cell = { workspace = true }
 
 # ✅ 引用本地 crates 模块（你已经写好的）
 client = { path = "../../crates/client" }
 utils = { path = "../../crates/utils" }
+token-registry = {path = "../../crates/token-registry"}
+arbitrage = {path = "../../crates/arbitrage"}
 comfy-table = "7.1.0"
+async-trait = "0.1"

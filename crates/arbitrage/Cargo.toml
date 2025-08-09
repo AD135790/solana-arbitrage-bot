@@ -7,3 +7,6 @@ edition = "2021"
 tokio = { workspace = true }
 serde = { workspace = true }
 reqwest = { workspace = true }
+anyhow = { workspace = true }
+futures = { workspace = true }
+token-registry = { path = "../token-registry" }

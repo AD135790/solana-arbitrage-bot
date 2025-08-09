@@ -1,15 +1,33 @@
-use clap::Args;
+use clap::{Args, ValueEnum};
 
-/// quote-matrix 子命令参数
-#[derive(Debug, Args)]
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum Hops { 
+    Two,
+    Three,
+    }
+
+#[derive(Debug, Args, Clone)]
 pub struct QuoteMatrixArgs {
-    /// 起始币种
     pub base: String,
-
-    /// 目标币种列表（可多个）
+    #[arg(num_args = 1.., value_name = "TOKENS")]
     pub tokens: Vec<String>,
-    
-    /// 显示详细路径收益信息
-    #[arg(long)]
+
+    #[arg(long, default_value_t = 1.0)]
+    pub amount: f64,
+    #[arg(long, default_value_t = 50)]
+    pub slippage_bps: u16,
+    #[arg(long, default_value_t = 5)]
+    pub concurrency: usize,
+
+    #[arg(long, value_enum, default_value_t = Hops::Two)]
+    pub hops: Hops,
+
+    /// 只展示 Top-K（0 表示全量）
+    #[arg(long, default_value_t = 0)]
+    pub top_k: usize,
+
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+    #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
 }

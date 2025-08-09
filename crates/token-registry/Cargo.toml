@@ -1,0 +1,18 @@
+[package]
+name = "token-registry"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+# 可选：用于落地缓存的路径处理
+dirs = "5"
+
+[features]
+# 运行时可选择是否启用 v2 搜索能力（不启用也能用 v1 名单）
+v2 = []

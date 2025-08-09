@@ -6,13 +6,14 @@ edition = "2021"
 [dependencies]
 client = {path = "../../crates/client" }
 utils = {path = "../../crates/utils"}
+token-registry = { path = "../../crates/token-registry" }
 tracing-subscriber = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 reqwest = { workspace = true }
 teloxide = { version = "0.12", features = ["macros", "auto-send"] }
-dotenvy = "0.15"
+dotenvy = { workspace = true }
 solana-program = { workspace = true }
 solana-client  = { workspace = true }
 solana-sdk     = { workspace = true }

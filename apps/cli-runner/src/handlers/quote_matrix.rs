@@ -1,72 +1,103 @@
-use crate::commands::quote_matrix::QuoteMatrixArgs;
-use client::jupiter::quote_chain::fetch_chain_quotes;
-// use client::jupiter::token_list::fetch_supported_tokens; // ❌ 暂时不用，网络不通
+use anyhow::Result;
+use std::cmp::Ordering;
+use std::collections::HashSet;
+
+use crate::commands::quote_matrix::{QuoteMatrixArgs, Hops};
+
+// 策略层
+use arbitrage::{evaluate_2hop, evaluate_3hop, ArbRow, QuoteProvider as StratQuoter};
+use token_registry::api::MintResolver;
+
+// HTTP 报价实现（不要引入它的 QuoteProvider，避免同名冲突）
+use crate::jupiter_client::api::{JupiterHttp, QuoteReq};
+
+// 打印
 use utils::printer::{MatrixRow, print_matrix_table};
-use utils::resolve_mint_address;
 
-pub async fn handle_quote_matrix(args: QuoteMatrixArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let base = args.base.to_uppercase();
-    let tokens = args.tokens.iter().map(|s| s.to_uppercase()).collect::<Vec<_>>();
-    let mut result_rows: Vec<MatrixRow> = vec![];
+/// 让 JupiterHttp 适配策略层报价 trait
+impl StratQuoter for JupiterHttp {
+    async fn quote(&self, input_mint: String, output_mint: String, amount: u64) -> Result<u64> {
+        // 用完全限定语法避免递归
+        let resp = <JupiterHttp as crate::jupiter_client::api::QuoteProvider>::quote(
+            self,
+            QuoteReq { input_mint, output_mint, amount }
+        ).await?;
+        Ok(resp.out_amount)
+    }
+}
 
-    println!("🧪 开始构造套利路径（起点：{}）", base);
+pub async fn handle_quote_matrix<R: MintResolver>(
+    args: QuoteMatrixArgs,
+    resolver: &R,
+    quoter: &JupiterHttp,
+    _require_tradable: bool,
+) -> Result<()> {
+    // 三跳时，如果用户没改默认并发（5），自动降到 2 更稳
+    let effective_conc = match args.hops {
+        Hops::Three if args.concurrency == 5 => 2,
+        _ => args.concurrency,
+    };
 
-    // ❌ 暂时不用网络请求的 token list
-    // let supported_tokens = fetch_supported_tokens().await?;
+    println!(
+        "🧪 开始构造套利路径（起点：{}，amount={}, slippage_bps={}，conc={}，hops={:?}）",
+        args.base, args.amount, args.slippage_bps, effective_conc, args.hops
+    );
 
-    for token in &tokens {
-        let mid = token;
-        let path = vec![base.as_str(), mid.as_str(), base.as_str()];
-        let start_amount = 1_000_000_000u64; // 1 SOL
+    // 1) 计算（不过滤，保证全量输出）
+    let mut rows: Vec<ArbRow> = match args.hops {
+        Hops::Two => {
+            // 传 i32::MIN，确保策略侧不做最小盈利过滤
+            evaluate_2hop(
+                resolver, quoter, &args.base, &args.tokens, args.amount, i32::MIN, effective_conc
+            ).await
+        }
+        Hops::Three => {
+            let r = evaluate_3hop(
+                resolver, quoter, &args.base, &args.tokens, args.amount, effective_conc, args.verbose
+            ).await;
 
-        // ✅ 只通过 TOKEN_MAP 映射解析
-        let _base_mint = match resolve_mint_address(&base) {
-            Some(m) => m,
-            None => {
-                println!("⚠️ 无法识别 base 币种: {}", base);
-                continue;
-            }
-        };
-
-        let _mid_mint = match resolve_mint_address(mid) {
-            Some(m) => m,
-            None => {
-                println!("⚠️ 无法识别中间币种: {}", mid);
-                continue;
-            }
-        };
-
-        // ❌ 如果你未来网络恢复，可打开以下检查
-        // if !supported_tokens.contains(base_mint) {
-        //     println!("⚠️ Jupiter 不支持 base 币种: {}", base);
-        //     continue;
-        // }
-        // if !supported_tokens.contains(mid_mint) {
-        //     println!("⚠️ Jupiter 不支持中间币种: {}", mid);
-        //     continue;
-        // }
-
-        // ✅ 执行模拟路径报价
-        match fetch_chain_quotes(path, start_amount).await {
-            Ok(chain) => {
-                let final_sol = chain.final_amount as f64 / 1e9;
-                let profitable = chain.final_amount > start_amount;
-
-                result_rows.push(MatrixRow {
-                    profitable,
-                    path: format!("{} → {} → {}", base, mid, base),
-                    start: 1.0,
-                    end: final_sol,
-                });
-            }
-            Err(e) => {
-                println!("❌ 无法完成路径 {} → {} → {} | 错误: {}", base, mid, base, e);
-                continue;
+            // 三跳偶发全空：自动兜底跑一轮二跳，避免空表
+            if r.is_empty() {
+                eprintln!("ℹ️ 3-hop returned empty. Falling back to 2-hop once…");
+                evaluate_2hop(
+                    resolver, quoter, &args.base, &args.tokens, args.amount, i32::MIN, effective_conc
+                ).await
+            } else {
+                r
             }
         }
+    };
+
+    // 2) 去重（按 path）
+    let mut seen = HashSet::new();
+    rows.retain(|r| seen.insert(r.path.clone()));
+
+    // 3) 排序（按 delta_bps 从高到低；NaN 视为相等）
+    rows.sort_by(|a, b| b.delta_bps.partial_cmp(&a.delta_bps).unwrap_or(Ordering::Equal));
+
+    // 4) Top-K（>0 才截断）
+    if args.top_k > 0 && rows.len() > args.top_k {
+        rows.truncate(args.top_k);
     }
 
-    // ✅ 打印结果表格
-    print_matrix_table(result_rows);
+    // 5) 输出
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+        return Ok(());
+    }
+
+    // 表格视图映射（printer 里会把 Δ 渲染成彩色百分比）
+    let view_rows: Vec<MatrixRow> = rows
+        .into_iter()
+        .map(|r| MatrixRow {
+            profitable: r.profitable,
+            path: r.path,
+            start: r.start,
+            end: r.end,
+            delta_bps: r.delta_bps,
+        })
+        .collect();
+
+    print_matrix_table(view_rows);
     Ok(())
 }
