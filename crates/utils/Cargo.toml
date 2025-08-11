@@ -13,3 +13,4 @@ serde_json = { workspace = true }
 solana-sdk     = { workspace = true }
 comfy-table = { workspace = true }
 once_cell = { workspace = true }
+chrono = { workspace = true }

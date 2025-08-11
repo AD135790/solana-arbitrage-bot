@@ -11,3 +11,5 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 utils = {path = "../../crates/utils"}
+arbitrage = {path = "../arbitrage"}
+async-trait = "0.1"

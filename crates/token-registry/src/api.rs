@@ -1,28 +1,11 @@
 use anyhow::Result;
 
+/// 统一抽象：策略层只依赖这个
 pub trait MintResolver: Send + Sync {
-    fn get_mint(&self, sym_or_mint: &str) -> Result<&str>;
-    fn get_decimals(&self, sym_or_mint: &str) -> Option<u8>;
-    // 可选：是否在“可交易集合”中（不实现就返回 None）
-    fn is_tradable(&self, _mint: &str) -> Option<bool> { None }
-}
-
-
-
-#[derive(Debug)]
-pub struct QuoteReq<'a> {
-    pub input_mint: &'a str,
-    pub output_mint: &'a str,
-    pub amount: u64,
-    pub slippage_bps: u16,
-}
-
-#[derive(Debug)]
-pub struct QuoteResp {
-    pub out_amount: u64,
-}
-
-#[allow(async_fn_in_trait)]
-pub trait QuoteProvider {
-    async fn quote(&self, req: QuoteReq) -> anyhow::Result<QuoteResp>;
+    /// 输入 symbol（不区分大小写），返回 mint 地址（借用）
+    fn get_mint(&self, symbol: &str) -> Result<&str>;
+    /// 小数位（拿不到就 None）
+    fn get_decimals(&self, symbol: &str) -> Option<u8>;
+    /// 是否可交易（可用来过滤弃用/黑名单）
+    fn is_tradable(&self, mint: &str) -> Option<bool>;
 }

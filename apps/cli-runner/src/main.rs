@@ -1,14 +1,14 @@
 mod commands;
 mod handlers;
-mod jupiter_client;
+mod clients;
 
 use clap::{Parser, Subcommand};
 use commands::quote::{run as run_quote, QuoteArgs};
 use commands::quote_matrix::QuoteMatrixArgs;
 use handlers::quote_matrix::handle_quote_matrix;
+use crate::clients::{build_provider, ProviderKind};
 
-use token_registry::LocalMintResolver;
-use crate::jupiter_client::api::JupiterHttp;
+use token_registry::LocalMintResolver; // 如果你没有这个类型，就用 Registry::from_sources(...)
 
 #[derive(Parser)]
 #[command(name = "cli-runner")]
@@ -20,9 +20,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// 查询 Jupiter 报价
     Quote(QuoteArgs),
-    /// 路径矩阵评估（base + 多个 tokens）
     QuoteMatrix(QuoteMatrixArgs),
 }
 
@@ -39,10 +37,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Commands::Quote(args) => run_quote(args).await?,
         Commands::QuoteMatrix(args) => {
-            let resolver = LocalMintResolver::new();
-            let quoter   = JupiterHttp::new(args.slippage_bps); // ✅ 用 CLI 滑点
+            // 1) resolver
+            let resolver = LocalMintResolver::new(); // 或 Registry::from_sources(...)
             let require_tradable = true;
 
+            // 2) quoter（用工厂：Jupiter/Mock 可切换）
+            let quoter = build_provider(ProviderKind::Jupiter, args.qps, args.retries);
+
+            // 3) 跑
             handle_quote_matrix(args, &resolver, &quoter, require_tradable).await?;
         }
     }

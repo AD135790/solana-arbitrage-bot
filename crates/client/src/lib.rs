@@ -1,7 +1,7 @@
 pub mod jupiter;
 
 pub mod types;
-
+pub mod jupiter_http;
 
 
 

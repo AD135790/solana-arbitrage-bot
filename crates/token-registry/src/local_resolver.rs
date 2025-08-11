@@ -1,59 +1,48 @@
-use anyhow::{Result, bail};
-use crate::{api::MintResolver, types::TokenInfo};
-use crate::registry::local_tokens; // 你之前的 local_tokens() 放哪就从哪引
+use std::collections::HashMap;
+use anyhow::{Result, anyhow};
+use crate::api::MintResolver;
+use crate::types::TokenInfo;
 
-/// 基于本地表的 Mint 解析器
-pub struct LocalMintResolver {
-    tokens: Vec<TokenInfo>,
+pub struct LocalResolver {
+    sym_to_mint: HashMap<String, String>, // 大写 symbol/alias -> mint
+    decimals:    HashMap<String, u8>,     // 大写 symbol -> decimals
+    tradable:    HashMap<String, bool>,   // mint -> tradable
 }
 
-impl LocalMintResolver {
-    pub fn new() -> Self {
-        Self { tokens: local_tokens() }
-    }
-
-    fn find_by_symbol_or_alias<'a>(&'a self, s: &str) -> Option<&'a TokenInfo> {
-        let s = s.trim();
-        self.tokens.iter().find(|t|
-            t.symbol.eq_ignore_ascii_case(s) ||
-            t.aliases.iter().any(|a| a.eq_ignore_ascii_case(s))
-        )
-    }
-}
-
-impl Default for LocalMintResolver {
-    fn default() -> Self { Self::new() }
-}
-
-impl MintResolver for LocalMintResolver {
-    // ✅ 返回 &str（借用自 self.tokens）
-    fn get_mint(&self, sym_or_mint: &str) -> Result<&str> {
-        let s = sym_or_mint.trim();
-
-        // 1) 先按 symbol/alias（不区分大小写）
-        if let Some(t) = self.find_by_symbol_or_alias(s) {
-            return Ok(t.mint.as_str());
+impl LocalResolver {
+    pub fn from_tokens(tokens: Vec<TokenInfo>) -> Self {
+        let mut sym_to_mint = HashMap::new();
+        let mut decimals    = HashMap::new();
+        for t in tokens {
+            for k in t.keys() {
+                sym_to_mint.insert(k, t.mint.clone());
+            }
+            decimals.insert(t.symbol.to_ascii_uppercase(), t.decimals);
         }
-
-        // 2) 再按 “就是 mint 本身”（区分大小写）
-        if let Some(t) = self.tokens.iter().find(|t| t.mint == s) {
-            return Ok(t.mint.as_str());
-        }
-
-        bail!("未知符号: {}", sym_or_mint)
+        Self { sym_to_mint, decimals, tradable: HashMap::new() }
     }
 
-    fn is_tradable(&self, mint: &str) -> Option<bool> {
-        Some(self.tokens.iter().any(|t| t.mint == mint))
-    }
-
-    fn get_decimals(&self, sym_or_mint: &str) -> Option<u8> {
-        let s = sym_or_mint.trim();
-        self.find_by_symbol_or_alias(s)
-            .map(|t| t.decimals)
-            .or_else(|| self.tokens.iter().find(|t| t.mint == s).map(|t| t.decimals))
+    pub fn with_builtin() -> Self {
+        use TokenInfo as T;
+        let toks = vec![
+            T { symbol: "SOL".into(),  mint: "So11111111111111111111111111111111111111112".into(), decimals: 9, aliases: vec!["WSOL".into(), "wSOL".into()] },
+            T { symbol: "USDC".into(), mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".into(), decimals: 6, aliases: vec![] },
+            T { symbol: "MSOL".into(), mint: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So".into(), decimals: 9, aliases: vec!["mSOL".into()] },
+        ];
+        Self::from_tokens(toks)
     }
 }
 
-
-
+impl MintResolver for LocalResolver {
+    fn get_mint(&self, symbol: &str) -> Result<&str> {
+        let key = symbol.to_ascii_uppercase();
+        self.sym_to_mint
+            .get(&key)
+            .map(|s| s.as_str())
+            .ok_or_else(|| anyhow!("unknown symbol: {symbol}"))
+    }
+    fn get_decimals(&self, symbol: &str) -> Option<u8> {
+        self.decimals.get(&symbol.to_ascii_uppercase()).copied()
+    }
+    fn is_tradable(&self, _mint: &str) -> Option<bool> { Some(true) }
+}
